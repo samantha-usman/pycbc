@@ -1,4 +1,4 @@
-# Copyright (C) 2013  Ian Harry, Alex Nitz
+# Copyright (C) 2013, 2017  Ian Harry, Alex Nitz, Duncan Brown
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -32,11 +32,12 @@ import numpy, cPickle, random
 from itertools import combinations, groupby, permutations
 from operator import attrgetter
 import lal as lalswig
-from glue import lal, segments
-from glue.ligolw import table, lsctables, ligolw
-from glue.ligolw import utils as ligolw_utils
-from glue.ligolw.utils import segments as ligolw_segments
-from glue.ligolw.utils import process as ligolw_process
+import Pegasus.DAX3
+from pycbc_glue import lal, segments
+from pycbc_glue.ligolw import table, lsctables, ligolw
+from pycbc_glue.ligolw import utils as ligolw_utils
+from pycbc_glue.ligolw.utils import segments as ligolw_segments
+from pycbc_glue.ligolw.utils import process as ligolw_process
 from pycbc.workflow.configuration import WorkflowConfigParser, resolve_url
 from pycbc.workflow import pegasus_workflow
 
@@ -85,7 +86,7 @@ def makedir(path):
     Make the analysis directory path and any parent directories that don't
     already exist. Will do nothing if path already exists.
     """
-    if not os.path.exists(path) and path is not None:
+    if path is not None and not os.path.exists(path):
         os.makedirs(path)
 
 def is_condor_exec(exe_path):
@@ -580,7 +581,7 @@ class Workflow(pegasus_workflow.Workflow):
  
     @property
     def output_map(self):  
-        if self.in_workflow != False:
+        if self.in_workflow is not False:
             name = self.name + '.map'
         else:
             name = 'output.map'
@@ -589,7 +590,7 @@ class Workflow(pegasus_workflow.Workflow):
         
     @property
     def staging_site(self):  
-        if self.in_workflow != False:
+        if self.in_workflow is not False:
             workflow_section = 'workflow-%s' % self.name 
         else:
             workflow_section = 'workflow'
@@ -637,24 +638,36 @@ class Workflow(pegasus_workflow.Workflow):
             fil.PFN(fil.storage_path, site='local')
     
     @staticmethod
-    def set_job_properties(job, output_map, staging_site=None):
-        job.addArguments('-Dpegasus.dir.storage.mapper.replica.file=%s' % output_map) 
+    def set_job_properties(job, output_map_file, staging_site=None):
+        job.addArguments('-Dpegasus.dir.storage.mapper.replica.file=%s' % 
+                         os.path.basename(output_map_file.name))
+        job.uses(output_map_file, link=Pegasus.DAX3.Link.INPUT)
         job.addArguments('-Dpegasus.dir.storage.mapper.replica=File') 
-        job.addArguments('--cache %s' % os.path.join(os.getcwd(), '_reuse.cache')) 
+
         job.addArguments('--output-site local')     
         job.addArguments('--cleanup inplace')
         job.addArguments('--cluster label,horizontal')
         job.addArguments('-vvv')
+
+        # FIXME _reuse_cache needs to be fixed to use PFNs properly. This will
+        # work as pegasus-plan is currently invoked on the local site so has
+        # access to a file in os.getcwd() but this code is fragile.
+        job.addArguments('--cache %s' % os.path.join(os.getcwd(), '_reuse.cache'))
+
         if staging_site:
             job.addArguments('--staging-site %s' % staging_site)
             
-    def save(self, filename=None, output_map=None, staging_site=None):
-        if output_map is None:
-            output_map = self.output_map
+    def save(self, filename=None, output_map_path=None, staging_site=None):
+        if output_map_path is None:
+            output_map_path = self.output_map
+        output_map_file = Pegasus.DAX3.File(os.path.basename(output_map_path))
+        output_map_file.addPFN(Pegasus.DAX3.PFN(output_map_path, 'local'))
+        if self.in_workflow is not False:
+            self.in_workflow._adag.addFile(output_map_file)
 
         staging_site = self.staging_site
             
-        Workflow.set_job_properties(self.as_job, output_map, staging_site)
+        Workflow.set_job_properties(self.as_job, output_map_file, staging_site)
 
         # add executable pfns for local site to dax
         for exe in self._executables:
@@ -668,7 +681,7 @@ class Workflow(pegasus_workflow.Workflow):
         super(Workflow, self).save(filename=filename)
         
         # add workflow storage locations to the output mapper
-        f = open(output_map, 'w')
+        f = open(output_map_path, 'w')
         for out in self._outputs:
             try:
                 f.write(out.output_map_str() + '\n')
@@ -1701,6 +1714,7 @@ class SegFile(File):
             # Add using glue library to set all segment tables
             with ligolw_segments.LigolwSegments(outdoc, process) as xmlsegs:
                 xmlsegs.insert_from_segmentlistdict({ifo : fsegs}, name,
+                                                    version = 1,
                                                     valid = {ifo : vsegs})
         # write file
         if override_file_if_exists and \

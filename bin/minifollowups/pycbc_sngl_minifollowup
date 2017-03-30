@@ -18,8 +18,8 @@
 """
 import os, sys, argparse, logging, h5py
 import numpy
-from glue.ligolw import lsctables, table
-from glue.ligolw import utils as ligolw_utils
+from pycbc_glue.ligolw import lsctables, table
+from pycbc_glue.ligolw import utils as ligolw_utils
 from pycbc.results import layout
 from pycbc.events import select_segments_by_definer
 import pycbc.workflow.minifollowups as mini
@@ -110,7 +110,7 @@ trigs = hdf.SingleDetTriggers(args.single_detector_file, args.bank_file,
                               None, args.instrument)
 
 if args.non_coinc_time_only:
-    from glue.ligolw.ligolw import LIGOLWContentHandler as h
+    from pycbc_glue.ligolw.ligolw import LIGOLWContentHandler as h
     lsctables.use_in(h)
     segs_doc = ligolw_utils.load_filename(args.inspiral_segments,
                                           contenthandler=h)
@@ -148,7 +148,7 @@ if len(trigs.snr) == 0:
     # There are no triggers, make no-op job and exit
     noop_node = mini.create_noop_node()
     workflow += noop_node
-    workflow.save(filename=args.output_file, output_map=args.output_map)
+    workflow.save(filename=args.output_file, output_map_path=args.output_map)
     sys.exit(0)
 
 trigs.mask_to_n_loudest_clustered_events(n_loudest=num_events,
@@ -214,5 +214,5 @@ for num_event in range(num_events):
     layouts += list(layout.grouper(files, 2))
     num_event += 1
 
-workflow.save(filename=args.output_file, output_map=args.output_map)
+workflow.save(filename=args.output_file, output_map_path=args.output_map)
 layout.two_column_layout(args.output_dir, layouts)

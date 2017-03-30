@@ -20,9 +20,9 @@ import sys
 import logging
 from numpy import complex64, float32
 from argparse import ArgumentParser
-from glue.ligolw import utils as ligolw_utils
-from glue.ligolw import table, lsctables
-from glue.ligolw.ligolw import LIGOLWContentHandler
+from pycbc_glue.ligolw import utils as ligolw_utils
+from pycbc_glue.ligolw import table, lsctables
+from pycbc_glue.ligolw.ligolw import LIGOLWContentHandler
 class mycontenthandler(LIGOLWContentHandler):
     pass
 lsctables.use_in(mycontenthandler)
@@ -391,7 +391,7 @@ logging.info("Determining maximum overlaps and outputting results")
 
 # Find the maximum overlap in the bank and output to a file
 with open(options.out_file, "w") as fout:
-    for i, (stilde, s_norm, matches, sim_template, hfc) in enumerate(signals):
+    for i, (stilde, s_norm, matches, sim_template) in enumerate(signals):
         match_str = "%5.5f " % max(matches)
         match_str += " " + options.bank_file
         match_str += " " + str(matches.index(max(matches)))
